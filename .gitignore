@@ -1,0 +1,86 @@
+# ----------------------------------------------------------------------
+# CodeIgniter .gitignore
+# ----------------------------------------------------------------------
+
+# Composer dependencies
+/vendor/
+/vendor_newVendor8.3/
+composer.phar
+
+# Application logs & cache (keep index.html and .gitkeep)
+/application/logs/*
+!/application/logs/index.html
+!/application/logs/.gitkeep
+/application/cache/*
+!/application/cache/index.html
+!/application/cache/.gitkeep
+
+# User-uploaded media files (keep folder structure and Bible JSONs)
+/uploads/audios/*
+!/uploads/audios/.gitkeep
+!/uploads/audios/index.html
+
+/uploads/videos/*
+!/uploads/videos/.gitkeep
+!/uploads/videos/index.html
+
+/uploads/pdf/*
+!/uploads/pdf/.gitkeep
+!/uploads/pdf/index.html
+
+/uploads/thumbnails/*
+!/uploads/thumbnails/.gitkeep
+!/uploads/thumbnails/index.html
+!/uploads/thumbnails/events/
+/uploads/thumbnails/events/*
+!/uploads/thumbnails/events/.gitkeep
+
+/uploads/socials/chats/*
+!/uploads/socials/chats/.gitkeep
+
+/uploads/socials/videos/*
+!/uploads/socials/videos/.gitkeep
+
+/uploads/socials/photos/*
+!/uploads/socials/photos/.gitkeep
+
+/uploads/socials/avatars/*
+!/uploads/socials/avatars/.gitkeep
+
+/uploads/socials/coverphotos/*
+!/uploads/socials/coverphotos/.gitkeep
+
+# Ensure Bible JSON data and root index.html remain tracked
+!/uploads/*.json
+!/uploads/index.html
+
+# Local Environment & Secrets
+.env
+.env.*
+*.pem
+*.key
+/application/config/firebase_credentials.json
+*.key
+
+# Operating System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# IDE & Editor Files
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+*~
+
+# Temporary & Log files
+*.log
+*.tmp
