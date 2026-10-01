@@ -403,7 +403,7 @@ public function translate_content($content, $lang) {
         return $content;
     }
 
-    $api_key = 'f192525c-93cd-aceb-1154-a8bdd645c9b2';
+    $api_key = $this->config->item('deepl_api_key');
     $url = 'https://api.deepl.com/v2/translate';
 
     $data = array(
@@ -531,7 +531,7 @@ public function translate_devotional_fields($title, $bible_reading, $content, $c
         ];
     }
 
-    $api_key = 'f192525c-93cd-aceb-1154-a8bdd645c9b2';
+    $api_key = $this->config->item('deepl_api_key');
     $url = 'https://api.deepl.com/v2/translate';
 
     $results = [];

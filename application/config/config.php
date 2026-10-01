@@ -536,3 +536,18 @@ $config['rewrite_short_tags'] = FALSE;
 $config['proxy_ips'] = '';
 //$config['purchase-from'] = "codecanyon"; //update to envisionapps, if you purchased directly from us.
 //$config["purchase-code"] = "4506cf15-ccd0-4256-b794-29f4c19c678e";
+
+/*
+|--------------------------------------------------------------------------
+| Third-Party API Keys
+|--------------------------------------------------------------------------
+|
+| Keys for external services used by the application.
+| Update these values before deploying to production.
+|
+*/
+
+// DeepL Translation API key (https://www.deepl.com/pro-api)
+// Used to auto-translate News and Devotionals into 8 languages.
+// Falls back to Google Translate if quota is exceeded.
+$config['deepl_api_key'] = 'f192525c-93cd-aceb-1154-a8bdd645c9b2';
