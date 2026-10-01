@@ -22,9 +22,9 @@ class Books extends BaseController {
 			$draw = intval($_POST['draw']);
 			$start = intval($_POST['start']);
 			$length = intval($_POST['length']);
-			$columnIndex = $_POST['order'][0]['column']; // Column index
-			$columnName = $_POST['columns'][$columnIndex]['data']; // Column name
-			$columnSortOrder = $_POST['order'][0]['dir']; // asc or desc
+			$columnIndex = isset($_POST['order'][0]['column']) ? $_POST['order'][0]['column'] : 0; // Column index
+			$columnName = isset($_POST['columns'][$columnIndex]['data']) ? $_POST['columns'][$columnIndex]['data'] : ''; // Column name
+			$columnSortOrder = isset($_POST['order'][0]['dir']) ? $_POST['order'][0]['dir'] : 'ASC'; // asc or desc
 			$searchValue="";
 			if(isset($_POST['search']['value'])){
 				$searchValue = $_POST['search']['value']; // Search value

@@ -103,13 +103,13 @@ function booksListing($columnName,$columnSortOrder,$searchValue,$start, $length)
         $result = $query->result();
         foreach ($result as $res) {
             
-         if(!$this->isValidURL($row->thumbnail)){
+         if(!$this->isValidURL($res->thumbnail)){
 
             $res->thumbnail = $this->base_url().$this->get_thumbnail_source($res->thumbnail);
           
          }
          
-          if(!$this->isValidURL($row->url)){
+          if(!$this->isValidURL($res->url)){
 
              $res->url = $this->base_url().$this->get_media_source($res->url);
           
