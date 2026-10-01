@@ -116,32 +116,75 @@ class Devotionals extends BaseController {
 							$content = $this->input->post('content');
 							$studies =$this->input->post('studies');
 							$confession =$this->input->post('confession');
-						//	$french_content =$this->input->post('french_content');
-				        //    $german_content =$this->input->post('german_content');
-				        
-				        $french_content = $bible_reading .$content . $confession . $studies ;
-                        $german_content = $bible_reading .$content . $confession . $studies ;
-         
-                         $translatedFrench_content = $this->devotionals_model->translate_content($french_content, 'FR');
-                          $translatedGerman_content = $this->devotionals_model->translate_content($german_content, 'DE');
-                          
-                           $germants_title = $this->devotionals_model->translate_content($title, 'DE');
-                           $frenchts_title = $this->devotionals_model->translate_content($title, 'FR');
-         
+
+							// Translate all 5 fields into all 8 languages:
+							// French, German, Italian, Spanish, Hindi, Russian, Portuguese, Mandarin
+							$translations = $this->devotionals_model->translate_devotional_fields($title, $bible_reading, $content, $confession, $studies);
 
 							$info = array(
 									'date' => $date,
 									'title' => $title,
-									'french_title' => $frenchts_title,
-									'german_title' => $germants_title,
 									'author' => $author,
 									'bible_reading' => $bible_reading,
 									'studies' => $studies,
 									'confession' => $confession,
 									'content' => $content,
-									'french_content' => $translatedFrench_content,
-									'german_content' => $translatedGerman_content
-								
+
+									// French
+									'french_title' => $translations['french_title'],
+									'french_bible_reading' => $translations['french_bible_reading'],
+									'french_content' => $translations['french_content'],
+									'french_confession' => $translations['french_confession'],
+									'french_studies' => $translations['french_studies'],
+
+									// German
+									'german_title' => $translations['german_title'],
+									'german_bible_reading' => $translations['german_bible_reading'],
+									'german_content' => $translations['german_content'],
+									'german_confession' => $translations['german_confession'],
+									'german_studies' => $translations['german_studies'],
+
+									// Italian
+									'italian_title' => $translations['italian_title'],
+									'italian_bible_reading' => $translations['italian_bible_reading'],
+									'italian_content' => $translations['italian_content'],
+									'italian_confession' => $translations['italian_confession'],
+									'italian_studies' => $translations['italian_studies'],
+
+									// Spanish
+									'spanish_title' => $translations['spanish_title'],
+									'spanish_bible_reading' => $translations['spanish_bible_reading'],
+									'spanish_content' => $translations['spanish_content'],
+									'spanish_confession' => $translations['spanish_confession'],
+									'spanish_studies' => $translations['spanish_studies'],
+
+									// Hindi
+									'hindi_title' => $translations['hindi_title'],
+									'hindi_bible_reading' => $translations['hindi_bible_reading'],
+									'hindi_content' => $translations['hindi_content'],
+									'hindi_confession' => $translations['hindi_confession'],
+									'hindi_studies' => $translations['hindi_studies'],
+
+									// Russian
+									'russian_title' => $translations['russian_title'],
+									'russian_bible_reading' => $translations['russian_bible_reading'],
+									'russian_content' => $translations['russian_content'],
+									'russian_confession' => $translations['russian_confession'],
+									'russian_studies' => $translations['russian_studies'],
+
+									// Portuguese
+									'portuguese_title' => $translations['portuguese_title'],
+									'portuguese_bible_reading' => $translations['portuguese_bible_reading'],
+									'portuguese_content' => $translations['portuguese_content'],
+									'portuguese_confession' => $translations['portuguese_confession'],
+									'portuguese_studies' => $translations['portuguese_studies'],
+
+									// Mandarin
+									'mandarin_title' => $translations['mandarin_title'],
+									'mandarin_bible_reading' => $translations['mandarin_bible_reading'],
+									'mandarin_content' => $translations['mandarin_content'],
+									'mandarin_confession' => $translations['mandarin_confession'],
+									'mandarin_studies' => $translations['mandarin_studies'],
 							);
 
 							if(!empty($_FILES['thumbnail']['name'])){
@@ -153,13 +196,6 @@ class Devotionals extends BaseController {
 
               $this->devotionals_model->addNewDevotional($info);
               
-               // Extract first 10 words of content
-       // $words = explode(' ', $content);
-        //$short_content = implode(' ', array_slice($words, 0, 10)) . '...';
-
-        // Send Notification
-        /*$this->sendNotificationToAll($title, $short_content);*/
-        
 						}
 
 							if($this->devotionals_model->status == "ok")
@@ -206,18 +242,89 @@ class Devotionals extends BaseController {
 				$french_title =$this->input->post('french_title');
 				$german_title =$this->input->post('german_title');
 
+				// Languages to auto-translate: Italian, Spanish, Hindi, Russian, Portuguese, Mandarin
+				// Also translate French and German if left empty on the edit page
+				$langs_to_translate = [
+					'italian'    => 'IT',
+					'spanish'    => 'ES',
+					'hindi'      => 'HI',
+					'russian'    => 'RU',
+					'portuguese' => 'PT',
+					'mandarin'   => 'ZH'
+				];
+				if (empty($french_title) || empty($french_content)) {
+					$langs_to_translate['french'] = 'FR';
+				}
+				if (empty($german_title) || empty($german_content)) {
+					$langs_to_translate['german'] = 'DE';
+				}
+
+				$translations = $this->devotionals_model->translate_devotional_fields($title, $bible_reading, $content, $confession, $studies, $langs_to_translate);
+
 				$info = array(
 						'date' => $date,
 						'title' => $title,
-						'french_title' => $french_title,
-						'german_title' => $german_title,
 						'author' => $author,
 						'bible_reading' => $bible_reading,
 						'studies' => $studies,
 						'confession' => $confession,
 						'content' => $content,
-						'french_content' => $french_content,
-						'german_content' => $german_content
+
+						// French
+						'french_title' => !empty($french_title) ? $french_title : (isset($translations['french_title']) ? $translations['french_title'] : $title),
+						'french_bible_reading' => isset($translations['french_bible_reading']) ? $translations['french_bible_reading'] : $bible_reading,
+						'french_content' => !empty($french_content) ? $french_content : (isset($translations['french_content']) ? $translations['french_content'] : $content),
+						'french_confession' => isset($translations['french_confession']) ? $translations['french_confession'] : $confession,
+						'french_studies' => isset($translations['french_studies']) ? $translations['french_studies'] : $studies,
+
+						// German
+						'german_title' => !empty($german_title) ? $german_title : (isset($translations['german_title']) ? $translations['german_title'] : $title),
+						'german_bible_reading' => isset($translations['german_bible_reading']) ? $translations['german_bible_reading'] : $bible_reading,
+						'german_content' => !empty($german_content) ? $german_content : (isset($translations['german_content']) ? $translations['german_content'] : $content),
+						'german_confession' => isset($translations['german_confession']) ? $translations['german_confession'] : $confession,
+						'german_studies' => isset($translations['german_studies']) ? $translations['german_studies'] : $studies,
+
+						// Italian
+						'italian_title' => $translations['italian_title'],
+						'italian_bible_reading' => $translations['italian_bible_reading'],
+						'italian_content' => $translations['italian_content'],
+						'italian_confession' => $translations['italian_confession'],
+						'italian_studies' => $translations['italian_studies'],
+
+						// Spanish
+						'spanish_title' => $translations['spanish_title'],
+						'spanish_bible_reading' => $translations['spanish_bible_reading'],
+						'spanish_content' => $translations['spanish_content'],
+						'spanish_confession' => $translations['spanish_confession'],
+						'spanish_studies' => $translations['spanish_studies'],
+
+						// Hindi
+						'hindi_title' => $translations['hindi_title'],
+						'hindi_bible_reading' => $translations['hindi_bible_reading'],
+						'hindi_content' => $translations['hindi_content'],
+						'hindi_confession' => $translations['hindi_confession'],
+						'hindi_studies' => $translations['hindi_studies'],
+
+						// Russian
+						'russian_title' => $translations['russian_title'],
+						'russian_bible_reading' => $translations['russian_bible_reading'],
+						'russian_content' => $translations['russian_content'],
+						'russian_confession' => $translations['russian_confession'],
+						'russian_studies' => $translations['russian_studies'],
+
+						// Portuguese
+						'portuguese_title' => $translations['portuguese_title'],
+						'portuguese_bible_reading' => $translations['portuguese_bible_reading'],
+						'portuguese_content' => $translations['portuguese_content'],
+						'portuguese_confession' => $translations['portuguese_confession'],
+						'portuguese_studies' => $translations['portuguese_studies'],
+
+						// Mandarin
+						'mandarin_title' => $translations['mandarin_title'],
+						'mandarin_bible_reading' => $translations['mandarin_bible_reading'],
+						'mandarin_content' => $translations['mandarin_content'],
+						'mandarin_confession' => $translations['mandarin_confession'],
+						'mandarin_studies' => $translations['mandarin_studies'],
 				);
 
 				if(!empty($_FILES['thumbnail']['name'])){

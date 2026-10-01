@@ -397,8 +397,11 @@ function character_limiter($str, $n = 500, $end_char = '&#8230;')
 
 
 
-// Function to translate content using DeepL API
+// Function to translate single content using DeepL API with Google Translate fallback
 public function translate_content($content, $lang) {
+    if (empty($content) || trim($content) === '') {
+        return $content;
+    }
 
     $api_key = 'f192525c-93cd-aceb-1154-a8bdd645c9b2';
     $url = 'https://api.deepl.com/v2/translate';
@@ -406,32 +409,256 @@ public function translate_content($content, $lang) {
     $data = array(
         "text" => [$content],
         "target_lang" => $lang,
-        "formality" => "less"
+        "tag_handling" => "html"
     );
 
-    $options = array(
-        'http' => array(
-            'header'  => "Content-Type: application/json\r\n" .
-                         "Authorization: DeepL-Auth-Key " . $api_key . "\r\n",
-            'method'  => 'POST',
-            'content' => json_encode($data),
-        ),
-    );
-
-    $context  = stream_context_create($options);
-    $result = file_get_contents($url, false, $context);
-
-    if ($result === FALSE) {
-        return false;
+    // DeepL only supports formality for specific languages (e.g. DE, FR, IT, ES, PT, RU). HI and ZH return HTTP 400 if formality is sent.
+    $supports_formality = in_array(strtoupper(explode('-', $lang)[0]), ['DE', 'FR', 'IT', 'ES', 'PT', 'RU', 'NL', 'PL', 'JA']);
+    if ($supports_formality) {
+        $data["formality"] = "less";
     }
 
-    $response = json_decode($result, true);
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+            "Content-Type: application/json",
+            "Authorization: DeepL-Auth-Key " . $api_key
+        ));
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+        $result = curl_exec($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
 
-    if(isset($response['translations'][0]['text'])){
-        return $response['translations'][0]['text'];
+        if ($result !== false && $http_code == 200) {
+            $response = json_decode($result, true);
+            if (isset($response['translations'][0]['text'])) {
+                return $response['translations'][0]['text'];
+            }
+        }
+    } else {
+        $options = array(
+            'http' => array(
+                'header'  => "Content-Type: application/json\r\n" .
+                             "Authorization: DeepL-Auth-Key " . $api_key . "\r\n",
+                'method'  => 'POST',
+                'content' => json_encode($data),
+                'timeout' => 15
+            ),
+        );
+        $context  = stream_context_create($options);
+        $result = @file_get_contents($url, false, $context);
+        if ($result !== false) {
+            $response = json_decode($result, true);
+            if (isset($response['translations'][0]['text'])) {
+                return $response['translations'][0]['text'];
+            }
+        }
+    }
+
+    // Fallback to Google Translate if DeepL is unavailable or quota exceeded
+    $fallback = $this->translate_via_google($content, $lang);
+    if (!empty($fallback)) {
+        return $fallback;
     }
 
     return false;
+}
+
+// Function to translate using Google Translate free API as a reliable fallback
+public function translate_via_google($text, $lang_code) {
+    if (empty($text) || trim($text) === '') {
+        return $text;
+    }
+
+    $map = [
+        'FR'      => 'fr',
+        'DE'      => 'de',
+        'IT'      => 'it',
+        'ES'      => 'es',
+        'HI'      => 'hi',
+        'RU'      => 'ru',
+        'PT'      => 'pt',
+        'PT-BR'   => 'pt',
+        'ZH'      => 'zh-CN',
+        'ZH-HANS' => 'zh-CN',
+    ];
+
+    $target = isset($map[strtoupper($lang_code)]) ? $map[strtoupper($lang_code)] : strtolower($lang_code);
+    $url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=" . urlencode($target) . "&dt=t&q=" . urlencode($text);
+
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+        curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+        $res = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($code == 200 && !empty($res)) {
+            $arr = json_decode($res, true);
+            if (isset($arr[0]) && is_array($arr[0])) {
+                $out = '';
+                foreach ($arr[0] as $segment) {
+                    if (isset($segment[0])) {
+                        $out .= $segment[0];
+                    }
+                }
+                if (!empty($out)) {
+                    return $out;
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
+// Function to translate all devotional fields into multiple languages in parallel
+public function translate_devotional_fields($title, $bible_reading, $content, $confession, $studies, array $target_langs = []) {
+    if (empty($target_langs)) {
+        $target_langs = [
+            'french'     => 'FR',
+            'german'     => 'DE',
+            'italian'    => 'IT',
+            'spanish'    => 'ES',
+            'hindi'      => 'HI',
+            'russian'    => 'RU',
+            'portuguese' => 'PT',
+            'mandarin'   => 'ZH'
+        ];
+    }
+
+    $api_key = 'f192525c-93cd-aceb-1154-a8bdd645c9b2';
+    $url = 'https://api.deepl.com/v2/translate';
+
+    $results = [];
+    foreach ($target_langs as $lang_key => $lang_code) {
+        $results[$lang_key . '_title'] = $title;
+        $results[$lang_key . '_bible_reading'] = $bible_reading;
+        $results[$lang_key . '_content'] = $content;
+        $results[$lang_key . '_confession'] = $confession;
+        $results[$lang_key . '_studies'] = $studies;
+    }
+
+    if (empty($title) && empty($content)) {
+        return $results;
+    }
+
+    if (function_exists('curl_multi_init')) {
+        $mh = curl_multi_init();
+        $curl_handles = [];
+
+        foreach ($target_langs as $lang_key => $lang_code) {
+            $payload = [
+                "text" => [
+                    (string)$title,
+                    (string)$bible_reading,
+                    (string)$content,
+                    (string)$confession,
+                    (string)$studies
+                ],
+                "target_lang" => $lang_code,
+                "tag_handling" => "html"
+            ];
+
+            $supports_formality = in_array(strtoupper(explode('-', $lang_code)[0]), ['DE', 'FR', 'IT', 'ES', 'PT', 'RU', 'NL', 'PL', 'JA']);
+            if ($supports_formality) {
+                $payload["formality"] = "less";
+            }
+
+            $ch = curl_init($url);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                "Content-Type: application/json",
+                "Authorization: DeepL-Auth-Key " . $api_key
+            ]);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 25);
+            curl_multi_add_handle($mh, $ch);
+            $curl_handles[$lang_key] = $ch;
+        }
+
+        $running = null;
+        do {
+            curl_multi_exec($mh, $running);
+            curl_multi_select($mh, 0.1);
+        } while ($running > 0);
+
+        foreach ($curl_handles as $lang_key => $ch) {
+            $res = curl_multi_getcontent($ch);
+            $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $got_translation = false;
+
+            if ($code == 200 && !empty($res)) {
+                $resp = json_decode($res, true);
+                if (isset($resp['translations']) && count($resp['translations']) >= 5) {
+                    $results[$lang_key . '_title'] = $resp['translations'][0]['text'];
+                    $results[$lang_key . '_bible_reading'] = $resp['translations'][1]['text'];
+                    $results[$lang_key . '_content'] = $resp['translations'][2]['text'];
+                    $results[$lang_key . '_confession'] = $resp['translations'][3]['text'];
+                    $results[$lang_key . '_studies'] = $resp['translations'][4]['text'];
+                    $got_translation = true;
+                }
+            }
+            curl_multi_remove_handle($mh, $ch);
+            curl_close($ch);
+
+            // If DeepL was not successful (e.g. quota exceeded code 456), fallback to Google Translate
+            if (!$got_translation) {
+                $lang_code = $target_langs[$lang_key];
+                $fb_title = $this->translate_via_google($title, $lang_code);
+                if (!empty($fb_title)) {
+                    $results[$lang_key . '_title'] = $fb_title;
+                }
+                $fb_br = $this->translate_via_google($bible_reading, $lang_code);
+                if (!empty($fb_br)) {
+                    $results[$lang_key . '_bible_reading'] = $fb_br;
+                }
+                $fb_content = $this->translate_via_google($content, $lang_code);
+                if (!empty($fb_content)) {
+                    $results[$lang_key . '_content'] = $fb_content;
+                }
+                $fb_conf = $this->translate_via_google($confession, $lang_code);
+                if (!empty($fb_conf)) {
+                    $results[$lang_key . '_confession'] = $fb_conf;
+                }
+                $fb_st = $this->translate_via_google($studies, $lang_code);
+                if (!empty($fb_st)) {
+                    $results[$lang_key . '_studies'] = $fb_st;
+                }
+            }
+        }
+        curl_multi_close($mh);
+    } else {
+        // Fallback to sequential translation
+        foreach ($target_langs as $lang_key => $lang_code) {
+            $fb_title = $this->translate_via_google($title, $lang_code);
+            if (!empty($fb_title)) {
+                $results[$lang_key . '_title'] = $fb_title;
+            }
+            $fb_br = $this->translate_via_google($bible_reading, $lang_code);
+            if (!empty($fb_br)) {
+                $results[$lang_key . '_bible_reading'] = $fb_br;
+            }
+            $fb_content = $this->translate_via_google($content, $lang_code);
+            if (!empty($fb_content)) {
+                $results[$lang_key . '_content'] = $fb_content;
+            }
+            $fb_conf = $this->translate_via_google($confession, $lang_code);
+            if (!empty($fb_conf)) {
+                $results[$lang_key . '_confession'] = $fb_conf;
+            }
+            $fb_st = $this->translate_via_google($studies, $lang_code);
+            if (!empty($fb_st)) {
+                $results[$lang_key . '_studies'] = $fb_st;
+            }
+        }
+    }
+
+    return $results;
 }
 
 
