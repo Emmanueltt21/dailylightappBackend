@@ -184,3 +184,39 @@ dailylightapp_backend/
 - Dependencies (`/vendor/`) are excluded from Git. Run `composer install` when setting up in fresh environments.
 - High-volume user media files (`uploads/audios/`, `uploads/videos/`, `uploads/pdf/`, `uploads/thumbnails/`) are ignored by `.gitignore` to keep repository size lean.
 - Bible translation schemas (`uploads/*.json`) are tracked as essential application assets.
+
+---
+
+## 🌍 Hostinger Deployment & Auto-Deploy Guide
+
+This guide covers how to update an existing deployment on a Hostinger shared hosting subdomain and set up auto-deployment via Git webhooks.
+
+### 1. Initial Setup (If not already connected to Git)
+If your existing Hostinger deployment is not yet linked to this Git repository:
+1. Log in to **Hostinger hPanel**.
+2. Go to **Advanced** > **GIT**.
+3. Under **Create a New Repository**, enter:
+   - **Repository**: `Emmanueltt21/dailylightappBackend` (or your fork)
+   - **Branch**: `main`
+   - **Directory**: Select your subdomain directory (e.g., `public_html/api` or `backend.yourdomain.com`).
+4. Click **Create**. Hostinger will pull the latest code.
+
+### 2. Setting Up Auto-Deploy (Webhooks)
+To automatically deploy new features when you push to GitHub:
+1. In the Hostinger **GIT** section, find your deployed repository.
+2. Click **Auto Deployment**. This will generate a Webhook URL.
+3. Copy the **Webhook URL**.
+4. Go to your repository on **GitHub**.
+5. Navigate to **Settings** > **Webhooks** > **Add webhook**.
+6. Paste the Webhook URL into the **Payload URL** field.
+7. Change the **Content type** to `application/json`.
+8. Select **Just the push event**.
+9. Click **Add webhook**.
+
+Now, every time you run `git push origin main`, Hostinger will automatically pull the changes!
+
+### 3. Updating Config & Database Post-Deploy
+After deploying new features (like the Multilingual DeepL integration):
+1. **Update Config**: Edit `application/config/config.php` via Hostinger File Manager to ensure `$config['deepl_api_key']` has your production API key.
+2. **Database Migrations**: If the database schema changed (e.g., new language columns), you must run the SQL updates on your Hostinger database via phpMyAdmin. For the multilingual update, the columns are already added, but ensure your production DB matches the local schema.
+3. **Run Composer (if needed)**: If you added new PHP packages, connect via SSH in Hostinger and run `composer install` in your project directory.
