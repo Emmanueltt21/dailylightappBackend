@@ -60,7 +60,11 @@ composer.phar
 *.pem
 *.key
 /application/config/firebase_credentials.json
-*.key
+
+# Server-specific files — configured per environment, never overwrite on deploy
+.htaccess
+/application/config/config.php
+/application/config/database.php
 
 # Operating System Files
 .DS_Store
