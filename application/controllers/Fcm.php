@@ -24,10 +24,8 @@ class Fcm extends BaseController
 
     function sendNotification()
     {
-
             $this->load->library('session');
             $this->load->library('form_validation');
-            $this->load->model('fcm_model');
 
             $this->form_validation->set_rules('title','Title','trim|required|max_length[128]|xss_clean');
             $this->form_validation->set_rules('message','Message','trim|required|xss_clean');
@@ -40,16 +38,16 @@ class Fcm extends BaseController
             {
                 $title = $this->input->post('title');
                 $msg = $this->input->post('message');
-                $this->load->model('settings_model');
-        			  $server_key = $this->settings_model->getFcmServerKey();
-                $this->fcm_model->sendPushNotificationToFCMSever($server_key,$title,$msg);
-                if($this->fcm_model->status == "ok")
+                $this->load->library('PushNotification');
+                $result = $this->pushnotification->sendNotification($title, $msg);
+                if(isset($result->success) && $result->success)
                 {
-                    $this->session->set_flashdata('success', $this->fcm_model->message);
+                    $this->session->set_flashdata('success', 'Notification sent successfully to app users.');
                 }
                 else
                 {
-                    $this->session->set_flashdata('error', $this->fcm_model->message);
+                    $error = isset($result->error) ? $result->error : 'Failed to send notification';
+                    $this->session->set_flashdata('error', $error);
                 }
 
                 redirect('notifications');

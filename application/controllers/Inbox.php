@@ -119,7 +119,7 @@ class Inbox extends BaseController {
 					$this->inbox_model->editInbox($info,$id);
 					if($this->inbox_model->status == "ok")
 					{
-							$$result = $this->pushnotification->sendNotification(
+							$result = $this->pushnotification->sendNotification(
                                                             $title, 
                                                             strip_tags($message),
                                                         );

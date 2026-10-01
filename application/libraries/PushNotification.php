@@ -1,17 +1,23 @@
 <?php
 defined('BASEPATH') OR exit('No direct script access allowed');
 
+use Kreait\Firebase\Factory;
+use Kreait\Firebase\Messaging\CloudMessage;
+use Kreait\Firebase\Exception\FirebaseException;
+
 /**
  * PushNotification Library
  * 
- * A CodeIgniter library for sending push notifications via Firebase Cloud Messaging
- * using the custom notification API.
+ * A CodeIgniter library for sending push notifications directly via
+ * Firebase Cloud Messaging (FCM HTTP v1) using Google Service Account credentials.
+ * Configured with full APNs support for iOS and Android high priority.
  */
 class PushNotification {
     
     protected $CI;
-    protected $api_url;
-    protected $default_topic;
+    protected $messaging = null;
+    protected $default_topic = 'all_users';
+    protected $init_error = null;
     
     /**
      * Constructor
@@ -19,31 +25,116 @@ class PushNotification {
      * @param array $config Configuration parameters
      */
     public function __construct($config = array()) {
-        $this->CI =& get_instance();
+        $this->CI = get_instance();
         
-        // Default configuration
-        $this->api_url = 'https://pushsdk.vercel.app/sendNotification';
-        //$this->default_topic = 'all_users';
-         $this->default_topic = 'all_users';
+        // Ensure Kreait Firebase SDK is loaded
+        if (!class_exists('Kreait\Firebase\Factory')) {
+            if (file_exists(FCPATH . 'vendor_newVendor8.3/autoload.php')) {
+                require_once FCPATH . 'vendor_newVendor8.3/autoload.php';
+            } elseif (file_exists(FCPATH . 'vendor/autoload.php')) {
+                require_once FCPATH . 'vendor/autoload.php';
+            }
+        }
         
         // Override defaults with custom config
-        if (!empty($config)) {
+        if (!empty($config) && is_array($config)) {
             foreach ($config as $key => $val) {
                 if (isset($this->$key)) {
                     $this->$key = $val;
                 }
             }
         }
+        
+        // Initialize Firebase Messaging
+        try {
+            $credentialsFile = APPPATH . 'config/firebase_credentials.json';
+            if (file_exists($credentialsFile)) {
+                $firebase = (new Factory)->withServiceAccount($credentialsFile);
+                $this->messaging = $firebase->createMessaging();
+            } else {
+                $this->init_error = 'Firebase credentials file not found: ' . $credentialsFile;
+                log_message('error', 'PushNotification: ' . $this->init_error);
+            }
+        } catch (\Throwable $e) {
+            $this->init_error = $e->getMessage();
+            log_message('error', 'PushNotification initialization error: ' . $e->getMessage());
+        }
     }
     
     /**
-     * Send a notification
+     * Build message payload array for FCM HTTP v1 with full Android and iOS APNs support
+     * 
+     * @param string $targetType 'topic' or 'token'
+     * @param string $targetValue Topic name or device token
+     * @param string $title Notification title
+     * @param string $body Notification body
+     * @param array $data Additional data key-value pairs
+     * @return array Complete CloudMessage configuration array
+     */
+    protected function _buildMessageArray($targetType, $targetValue, $title, $body, $data = array()) {
+        $cleanBody = strip_tags($body);
+        
+        // Stringify all data values for FCM v1 requirement
+        $dataPayload = array(
+            'click_action' => 'FLUTTER_NOTIFICATION_CLICK',
+            'title' => (string) $title,
+            'body' => (string) $cleanBody,
+        );
+        
+        if (!empty($data) && is_array($data)) {
+            foreach ($data as $k => $v) {
+                $dataPayload[(string)$k] = is_scalar($v) ? (string) $v : json_encode($v);
+            }
+        }
+        
+        $messageArray = array(
+            $targetType => $targetValue,
+            'notification' => array(
+                'title' => (string) $title,
+                'body' => (string) $cleanBody,
+            ),
+            'data' => $dataPayload,
+            // Android high-priority configuration
+            'android' => array(
+                'priority' => 'high',
+                'notification' => array(
+                    'sound' => 'default',
+                    'default_sound' => true,
+                    'default_vibrate_timings' => true,
+                ),
+            ),
+            // iOS APNs configuration (critical for iOS lock screen, sound, and background wake)
+            'apns' => array(
+                'headers' => array(
+                    'apns-priority' => '10',
+                    'apns-push-type' => 'alert',
+                    'apns-topic' => 'com.lighthouseglobal.yourdailylight',
+                ),
+                'payload' => array(
+                    'aps' => array(
+                        'alert' => array(
+                            'title' => (string) $title,
+                            'body' => (string) $cleanBody,
+                        ),
+                        'sound' => 'default',
+                        'badge' => 1,
+                        'content-available' => 1,
+                    ),
+                ),
+            ),
+        );
+        
+        return $messageArray;
+    }
+    
+    /**
+     * Send a notification directly to FCM topic (with iOS APNs & Android support)
      * 
      * @param string $title The notification title
      * @param string $body The notification body
-     * @param string $topic The topic to send to (optional)
+     * @param string $topic The topic to send to (optional, defaults to 'all_users')
      * @param array $data Additional data to send (optional)
-     * @return object Response from the notification API
+     * @return object Standard response object { success: bool, message_id?: string, error?: string }
      */
     public function sendNotification($title, $body, $topic = null, $data = array()) {
         if (empty($title) || empty($body)) {
@@ -53,25 +144,86 @@ class PushNotification {
             );
         }
         
-        // Use default topic if none provided
+        if ($this->messaging === null) {
+            return (object) array(
+                'success' => false,
+                'error' => $this->init_error ?: 'Firebase Messaging could not be initialized'
+            );
+        }
+        
         if (empty($topic)) {
             $topic = $this->default_topic;
         }
         
-        // Prepare the notification payload
-        $payload = array(
-            'topic' => $topic,
-            'title' => $title,
-            'body' => $body
-        );
-        
-        // Add additional data if provided
-        if (!empty($data) && is_array($data)) {
-            $payload['data'] = $data;
+        try {
+            $messageArray = $this->_buildMessageArray('topic', $topic, $title, $body, $data);
+            $message = CloudMessage::fromArray($messageArray);
+            
+            $response = $this->messaging->send($message);
+            $messageId = is_array($response) && isset($response['name']) ? $response['name'] : (is_string($response) ? $response : 'sent');
+            
+            return (object) array(
+                'success' => true,
+                'message_id' => $messageId,
+                'topic' => $topic
+            );
+        } catch (FirebaseException $e) {
+            log_message('error', 'PushNotification FCM send error: ' . $e->getMessage());
+            return (object) array(
+                'success' => false,
+                'error' => $e->getMessage()
+            );
+        } catch (\Throwable $e) {
+            log_message('error', 'PushNotification general error: ' . $e->getMessage());
+            return (object) array(
+                'success' => false,
+                'error' => $e->getMessage()
+            );
+        }
+    }
+    
+    /**
+     * Send notification to a specific device FCM token (with iOS APNs & Android support)
+     * 
+     * @param string $token Device FCM registration token
+     * @param string $title The notification title
+     * @param string $body The notification body
+     * @param array $data Additional data (optional)
+     * @return object Standard response object
+     */
+    public function sendToToken($token, $title, $body, $data = array()) {
+        if (empty($token) || empty($title) || empty($body)) {
+            return (object) array(
+                'success' => false,
+                'error' => 'Token, title and body are required'
+            );
         }
         
-        // Send the notification using cURL
-        return $this->_sendCurl($payload);
+        if ($this->messaging === null) {
+            return (object) array(
+                'success' => false,
+                'error' => $this->init_error ?: 'Firebase Messaging could not be initialized'
+            );
+        }
+        
+        try {
+            $messageArray = $this->_buildMessageArray('token', $token, $title, $body, $data);
+            $message = CloudMessage::fromArray($messageArray);
+            
+            $response = $this->messaging->send($message);
+            $messageId = is_array($response) && isset($response['name']) ? $response['name'] : (is_string($response) ? $response : 'sent');
+            
+            return (object) array(
+                'success' => true,
+                'message_id' => $messageId
+            );
+        } catch (\Throwable $e) {
+            log_message('error', 'PushNotification sendToToken error: ' . $e->getMessage());
+            return (object) array(
+                'success' => false,
+                'error' => $e->getMessage()
+            );
+        }
     }
     
     /**
@@ -92,73 +244,11 @@ class PushNotification {
         }
         
         $responses = array();
-        
         foreach ($topics as $topic) {
             $responses[$topic] = $this->sendNotification($title, $body, $topic, $data);
         }
         
         return $responses;
-    }
-    
-    /**
-     * Send the cURL request to the notification API
-     * 
-     * @param array $payload The notification payload
-     * @return object Response from the API
-     */
-    private function _sendCurl($payload) {
-        // Initialize cURL
-        $ch = curl_init($this->api_url);
-        
-        // Set cURL options
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-        curl_setopt($ch, CURLOPT_HTTPHEADER, array(
-            'Content-Type: application/json',
-            'Content-Length: ' . strlen(json_encode($payload))
-        ));
-        
-        // Execute cURL request
-        $response = curl_exec($ch);
-        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curl_error = curl_error($ch);
-        
-        // Close cURL connection
-        curl_close($ch);
-        
-        // Handle response
-        if ($response === false) {
-            return (object) array(
-                'success' => false,
-                'error' => 'cURL Error: ' . $curl_error
-            );
-        }
-        
-        // Decode JSON response
-        $result = json_decode($response);
-        
-        // If not a valid JSON response
-        if ($result === null) {
-            return (object) array(
-                'success' => false,
-                'error' => 'Invalid API response',
-                'http_code' => $http_code,
-                'raw_response' => $response
-            );
-        }
-        
-        return $result;
-    }
-    
-    /**
-     * Set the API URL
-     * 
-     * @param string $url The API URL
-     * @return void
-     */
-    public function setApiUrl($url) {
-        $this->api_url = $url;
     }
     
     /**
