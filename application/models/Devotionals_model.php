@@ -404,7 +404,16 @@ public function translate_content($content, $lang) {
     }
 
     $api_key = $this->config->item('deepl_api_key');
-    $url = 'https://api.deepl.com/v2/translate';
+    if (empty($api_key) && defined('DEEPL_API_KEY')) {
+        $api_key = DEEPL_API_KEY;
+    }
+    if (empty($api_key)) {
+        $api_key = getenv('DEEPL_API_KEY');
+    }
+    $api_key = trim((string)$api_key);
+
+    $is_free_key = (substr($api_key, -3) === ':fx');
+    $url = $is_free_key ? 'https://api-free.deepl.com/v2/translate' : 'https://api.deepl.com/v2/translate';
 
     $data = array(
         "text" => [$content],
@@ -418,7 +427,7 @@ public function translate_content($content, $lang) {
         $data["formality"] = "less";
     }
 
-    if (function_exists('curl_init')) {
+    if (!empty($api_key) && function_exists('curl_init')) {
         $ch = curl_init($url);
         curl_setopt($ch, CURLOPT_HTTPHEADER, array(
             "Content-Type: application/json",
@@ -426,7 +435,10 @@ public function translate_content($content, $lang) {
         ));
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 20);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
         $result = curl_exec($ch);
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
@@ -436,16 +448,22 @@ public function translate_content($content, $lang) {
             if (isset($response['translations'][0]['text'])) {
                 return $response['translations'][0]['text'];
             }
+        } else {
+            log_message('error', "DeepL single translate failed (HTTP {$http_code}): " . substr((string)$result, 0, 200));
         }
-    } else {
+    } elseif (!empty($api_key)) {
         $options = array(
             'http' => array(
                 'header'  => "Content-Type: application/json\r\n" .
                              "Authorization: DeepL-Auth-Key " . $api_key . "\r\n",
                 'method'  => 'POST',
                 'content' => json_encode($data),
-                'timeout' => 15
+                'timeout' => 20
             ),
+            'ssl' => array(
+                'verify_peer' => false,
+                'verify_peer_name' => false
+            )
         );
         $context  = stream_context_create($options);
         $result = @file_get_contents($url, false, $context);
@@ -491,8 +509,11 @@ public function translate_via_google($text, $lang_code) {
     if (function_exists('curl_init')) {
         $ch = curl_init($url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+        curl_setopt($ch, CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
         curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
         $res = curl_exec($ch);
         $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
@@ -510,6 +531,8 @@ public function translate_via_google($text, $lang_code) {
                     return $out;
                 }
             }
+        } else {
+            log_message('error', "Google translate fallback failed for {$lang_code} (HTTP {$code})");
         }
     }
 
@@ -532,7 +555,16 @@ public function translate_devotional_fields($title, $bible_reading, $content, $c
     }
 
     $api_key = $this->config->item('deepl_api_key');
-    $url = 'https://api.deepl.com/v2/translate';
+    if (empty($api_key) && defined('DEEPL_API_KEY')) {
+        $api_key = DEEPL_API_KEY;
+    }
+    if (empty($api_key)) {
+        $api_key = getenv('DEEPL_API_KEY');
+    }
+    $api_key = trim((string)$api_key);
+
+    $is_free_key = (substr($api_key, -3) === ':fx');
+    $url = $is_free_key ? 'https://api-free.deepl.com/v2/translate' : 'https://api.deepl.com/v2/translate';
 
     $results = [];
     foreach ($target_langs as $lang_key => $lang_code) {
@@ -547,7 +579,7 @@ public function translate_devotional_fields($title, $bible_reading, $content, $c
         return $results;
     }
 
-    if (function_exists('curl_multi_init')) {
+    if (!empty($api_key) && function_exists('curl_multi_init')) {
         $mh = curl_multi_init();
         $curl_handles = [];
 
@@ -577,6 +609,9 @@ public function translate_devotional_fields($title, $bible_reading, $content, $c
             curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($ch, CURLOPT_TIMEOUT, 25);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
             curl_multi_add_handle($mh, $ch);
             $curl_handles[$lang_key] = $ch;
         }
@@ -602,6 +637,8 @@ public function translate_devotional_fields($title, $bible_reading, $content, $c
                     $results[$lang_key . '_studies'] = $resp['translations'][4]['text'];
                     $got_translation = true;
                 }
+            } else {
+                log_message('error', "DeepL multi-translate failed for {$lang_key} (HTTP {$code}): " . substr((string)$res, 0, 200));
             }
             curl_multi_remove_handle($mh, $ch);
             curl_close($ch);
