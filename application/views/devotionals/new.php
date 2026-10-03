@@ -134,7 +134,7 @@
         <div style="text-align:left; background:#f5f5f5; border-radius:10px; padding:14px 18px;">
             <div class="dl-step" id="dl-step1"
                 style="display:flex; align-items:center; gap:10px; padding:7px 0; color:#bbb; font-size:13px;">
-                <span class="dl-icon">⏳</span><span>Saving devotional to database</span>
+                <span class="dl-icon">⏳</span><span>Saving devotional</span>
             </div>
             <div class="dl-step" id="dl-step2"
                 style="display:flex; align-items:center; gap:10px; padding:7px 0; color:#bbb; font-size:13px;">

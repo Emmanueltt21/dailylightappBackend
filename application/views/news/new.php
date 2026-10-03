@@ -110,7 +110,7 @@
         <div style="text-align:left; background:#f5f5f5; border-radius:10px; padding:14px 18px;">
             <div class="news-step" id="news-step1"
                 style="display:flex; align-items:center; gap:10px; padding:7px 0; color:#bbb; font-size:13px;">
-                <span class="news-icon">⏳</span><span>Saving news article to database</span>
+                <span class="news-icon">⏳</span><span>Saving news article </span>
             </div>
             <div class="news-step" id="news-step2"
                 style="display:flex; align-items:center; gap:10px; padding:7px 0; color:#bbb; font-size:13px;">
