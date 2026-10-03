@@ -63,3 +63,5 @@ define('MAIL_PATH', '/usr/sbin/sendmail');
 define('JWT_KEY', 'a2F0c2luYS1lZHVicmVlemUubmc=');
 /* End of file constants.php cac,acaca */
 /* Location: ./application/config/constants.php */
+
+define('DEEPL_API_KEY', 'f192525c-93cd-aceb-1154-a8bdd645c9b2');

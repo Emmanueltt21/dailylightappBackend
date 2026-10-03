@@ -451,28 +451,6 @@ public function translate_content($content, $lang) {
         } else {
             log_message('error', "DeepL single translate failed (HTTP {$http_code}): " . substr((string)$result, 0, 200));
         }
-    } elseif (!empty($api_key)) {
-        $options = array(
-            'http' => array(
-                'header'  => "Content-Type: application/json\r\n" .
-                             "Authorization: DeepL-Auth-Key " . $api_key . "\r\n",
-                'method'  => 'POST',
-                'content' => json_encode($data),
-                'timeout' => 20
-            ),
-            'ssl' => array(
-                'verify_peer' => false,
-                'verify_peer_name' => false
-            )
-        );
-        $context  = stream_context_create($options);
-        $result = @file_get_contents($url, false, $context);
-        if ($result !== false) {
-            $response = json_decode($result, true);
-            if (isset($response['translations'][0]['text'])) {
-                return $response['translations'][0]['text'];
-            }
-        }
     }
 
     // Fallback to Google Translate if DeepL is unavailable or quota exceeded
@@ -484,7 +462,7 @@ public function translate_content($content, $lang) {
     return false;
 }
 
-// Function to translate using Google Translate free API as a reliable fallback
+// Function to translate using Google Translate free API with multi-endpoint fallback
 public function translate_via_google($text, $lang_code) {
     if (empty($text) || trim($text) === '') {
         return $text;
@@ -504,13 +482,14 @@ public function translate_via_google($text, $lang_code) {
     ];
 
     $target = isset($map[strtoupper($lang_code)]) ? $map[strtoupper($lang_code)] : strtolower($lang_code);
-    $url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=" . urlencode($target) . "&dt=t&q=" . urlencode($text);
 
+    // Try Endpoint 1: clients5.google.com
+    $url1 = "https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=auto&tl=" . urlencode($target) . "&q=" . urlencode($text);
     if (function_exists('curl_init')) {
-        $ch = curl_init($url);
+        $ch = curl_init($url1);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
-        curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
         curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
         curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
@@ -520,9 +499,29 @@ public function translate_via_google($text, $lang_code) {
 
         if ($code == 200 && !empty($res)) {
             $arr = json_decode($res, true);
-            if (isset($arr[0]) && is_array($arr[0])) {
+            if (isset($arr[0][0]) && !empty($arr[0][0])) {
+                return $arr[0][0];
+            }
+        }
+
+        // Try Endpoint 2: translate.googleapis.com
+        $url2 = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=" . urlencode($target) . "&dt=t&q=" . urlencode($text);
+        $ch2 = curl_init($url2);
+        curl_setopt($ch2, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch2, CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+        curl_setopt($ch2, CURLOPT_TIMEOUT, 10);
+        curl_setopt($ch2, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch2, CURLOPT_SSL_VERIFYHOST, 0);
+        curl_setopt($ch2, CURLOPT_FOLLOWLOCATION, true);
+        $res2 = curl_exec($ch2);
+        $code2 = curl_getinfo($ch2, CURLINFO_HTTP_CODE);
+        curl_close($ch2);
+
+        if ($code2 == 200 && !empty($res2)) {
+            $arr2 = json_decode($res2, true);
+            if (isset($arr2[0]) && is_array($arr2[0])) {
                 $out = '';
-                foreach ($arr[0] as $segment) {
+                foreach ($arr2[0] as $segment) {
                     if (isset($segment[0])) {
                         $out .= $segment[0];
                     }
@@ -532,11 +531,94 @@ public function translate_via_google($text, $lang_code) {
                 }
             }
         } else {
-            log_message('error', "Google translate fallback failed for {$lang_code} (HTTP {$code})");
+            log_message('error', "Google translate fallback failed for {$lang_code} (HTTP {$code2})");
         }
     }
 
     return false;
+}
+
+// Function to translate all devotional fields in parallel using Google Translate
+public function translate_devotional_fields_via_google_parallel($title, $bible_reading, $content, $confession, $studies, array $target_langs) {
+    $map = [
+        'FR'      => 'fr',
+        'DE'      => 'de',
+        'IT'      => 'it',
+        'ES'      => 'es',
+        'HI'      => 'hi',
+        'RU'      => 'ru',
+        'PT'      => 'pt',
+        'PT-BR'   => 'pt',
+        'ZH'      => 'zh-CN',
+        'ZH-HANS' => 'zh-CN',
+    ];
+
+    $fields = [
+        'title'         => $title,
+        'bible_reading' => $bible_reading,
+        'content'       => $content,
+        'confession'    => $confession,
+        'studies'       => $studies
+    ];
+
+    $results = [];
+
+    if (!function_exists('curl_multi_init')) {
+        foreach ($target_langs as $lang_key => $lang_code) {
+            foreach ($fields as $field_key => $text) {
+                $results[$lang_key . '_' . $field_key] = $this->translate_via_google($text, $lang_code) ?: $text;
+            }
+        }
+        return $results;
+    }
+
+    $mh = curl_multi_init();
+    $handles = [];
+
+    foreach ($target_langs as $lang_key => $lang_code) {
+        $target = isset($map[strtoupper($lang_code)]) ? $map[strtoupper($lang_code)] : strtolower($lang_code);
+        foreach ($fields as $field_key => $text) {
+            $res_key = $lang_key . '_' . $field_key;
+            $results[$res_key] = $text; // default fallback
+
+            if (empty($text) || trim($text) === '') {
+                continue;
+            }
+
+            $url = "https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=auto&tl=" . urlencode($target) . "&q=" . urlencode($text);
+            $ch = curl_init($url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+            curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            curl_multi_add_handle($mh, $ch);
+            $handles[$res_key] = $ch;
+        }
+    }
+
+    $running = null;
+    do {
+        curl_multi_exec($mh, $running);
+        curl_multi_select($mh, 0.05);
+    } while ($running > 0);
+
+    foreach ($handles as $res_key => $ch) {
+        $res = curl_multi_getcontent($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        if ($code == 200 && !empty($res)) {
+            $arr = json_decode($res, true);
+            if (isset($arr[0][0]) && !empty($arr[0][0])) {
+                $results[$res_key] = $arr[0][0];
+            }
+        }
+        curl_multi_remove_handle($mh, $ch);
+        curl_close($ch);
+    }
+    curl_multi_close($mh);
+
+    return $results;
 }
 
 // Function to translate all devotional fields into multiple languages in parallel
@@ -578,6 +660,8 @@ public function translate_devotional_fields($title, $bible_reading, $content, $c
     if (empty($title) && empty($content)) {
         return $results;
     }
+
+    $missing_langs = [];
 
     if (!empty($api_key) && function_exists('curl_multi_init')) {
         $mh = curl_multi_init();
@@ -643,54 +727,23 @@ public function translate_devotional_fields($title, $bible_reading, $content, $c
             curl_multi_remove_handle($mh, $ch);
             curl_close($ch);
 
-            // If DeepL was not successful (e.g. quota exceeded code 456), fallback to Google Translate
             if (!$got_translation) {
-                $lang_code = $target_langs[$lang_key];
-                $fb_title = $this->translate_via_google($title, $lang_code);
-                if (!empty($fb_title)) {
-                    $results[$lang_key . '_title'] = $fb_title;
-                }
-                $fb_br = $this->translate_via_google($bible_reading, $lang_code);
-                if (!empty($fb_br)) {
-                    $results[$lang_key . '_bible_reading'] = $fb_br;
-                }
-                $fb_content = $this->translate_via_google($content, $lang_code);
-                if (!empty($fb_content)) {
-                    $results[$lang_key . '_content'] = $fb_content;
-                }
-                $fb_conf = $this->translate_via_google($confession, $lang_code);
-                if (!empty($fb_conf)) {
-                    $results[$lang_key . '_confession'] = $fb_conf;
-                }
-                $fb_st = $this->translate_via_google($studies, $lang_code);
-                if (!empty($fb_st)) {
-                    $results[$lang_key . '_studies'] = $fb_st;
-                }
+                $missing_langs[$lang_key] = $target_langs[$lang_key];
             }
         }
         curl_multi_close($mh);
     } else {
-        // Fallback to sequential translation
-        foreach ($target_langs as $lang_key => $lang_code) {
-            $fb_title = $this->translate_via_google($title, $lang_code);
-            if (!empty($fb_title)) {
-                $results[$lang_key . '_title'] = $fb_title;
-            }
-            $fb_br = $this->translate_via_google($bible_reading, $lang_code);
-            if (!empty($fb_br)) {
-                $results[$lang_key . '_bible_reading'] = $fb_br;
-            }
-            $fb_content = $this->translate_via_google($content, $lang_code);
-            if (!empty($fb_content)) {
-                $results[$lang_key . '_content'] = $fb_content;
-            }
-            $fb_conf = $this->translate_via_google($confession, $lang_code);
-            if (!empty($fb_conf)) {
-                $results[$lang_key . '_confession'] = $fb_conf;
-            }
-            $fb_st = $this->translate_via_google($studies, $lang_code);
-            if (!empty($fb_st)) {
-                $results[$lang_key . '_studies'] = $fb_st;
+        $missing_langs = $target_langs;
+    }
+
+    // Parallel Google Translate fallback for all languages that failed on DeepL
+    if (!empty($missing_langs)) {
+        $google_translations = $this->translate_devotional_fields_via_google_parallel(
+            $title, $bible_reading, $content, $confession, $studies, $missing_langs
+        );
+        foreach ($google_translations as $field_name => $trans_value) {
+            if (!empty($trans_value)) {
+                $results[$field_name] = $trans_value;
             }
         }
     }
