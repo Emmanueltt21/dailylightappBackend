@@ -73,6 +73,37 @@ class PushNotification {
     }
     
     /**
+     * Clean and normalize notification text for FCM and APNs
+     * Strips HTML tags, decodes HTML entities (&nbsp;, &amp;, etc.),
+     * normalizes non-breaking spaces, and preserves UTF-8 / emojis.
+     * 
+     * @param string $text
+     * @return string
+     */
+    public function cleanNotificationText($text) {
+        if ($text === null || $text === '') {
+            return '';
+        }
+        
+        // Convert block/break tags to space or newlines
+        $text = preg_replace('/<\s*(?:br|\/p|\/div)\s*\/?>/i', " ", (string)$text);
+        
+        // Strip HTML tags
+        $text = strip_tags($text);
+        
+        // Decode HTML entities (e.g. &nbsp; => space, &#39; => ', &amp; => &)
+        $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        
+        // Replace non-breaking spaces (Unicode \u00A0 / \xC2\xA0 / &nbsp;) with regular space
+        $text = str_replace(["\xc2\xa0", "\u{00a0}", "&nbsp;"], ' ', $text);
+        
+        // Normalize multiple consecutive spaces
+        $text = preg_replace('/[^\S\r\n]+/', ' ', $text);
+        
+        return trim($text);
+    }
+    
+    /**
      * Build message payload array for FCM HTTP v1 with full Android and iOS APNs support
      * 
      * @param string $targetType 'topic' or 'token'
@@ -83,12 +114,13 @@ class PushNotification {
      * @return array Complete CloudMessage configuration array
      */
     protected function _buildMessageArray($targetType, $targetValue, $title, $body, $data = array()) {
-        $cleanBody = strip_tags($body);
+        $cleanTitle = $this->cleanNotificationText($title);
+        $cleanBody = $this->cleanNotificationText($body);
         
         // Stringify all data values for FCM v1 requirement
         $dataPayload = array(
             'click_action' => 'FLUTTER_NOTIFICATION_CLICK',
-            'title' => (string) $title,
+            'title' => (string) $cleanTitle,
             'body' => (string) $cleanBody,
         );
         
@@ -101,7 +133,7 @@ class PushNotification {
         $messageArray = array(
             $targetType => $targetValue,
             'notification' => array(
-                'title' => (string) $title,
+                'title' => (string) $cleanTitle,
                 'body' => (string) $cleanBody,
             ),
             'data' => $dataPayload,
@@ -124,7 +156,7 @@ class PushNotification {
                 'payload' => array(
                     'aps' => array(
                         'alert' => array(
-                            'title' => (string) $title,
+                            'title' => (string) $cleanTitle,
                             'body' => (string) $cleanBody,
                         ),
                         'sound' => 'default',
@@ -148,6 +180,9 @@ class PushNotification {
      * @return object Standard response object { success: bool, message_id?: string, error?: string }
      */
     public function sendNotification($title, $body, $topic = null, $data = array()) {
+        $title = $this->cleanNotificationText($title);
+        $body = $this->cleanNotificationText($body);
+        
         if (empty($title) || empty($body)) {
             return (object) array(
                 'success' => false,

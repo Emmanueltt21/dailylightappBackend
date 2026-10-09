@@ -46,7 +46,7 @@ class Inbox extends BaseController {
                 redirect('newInbox');
             } else
             {
-							$title = ucwords(strtolower($this->input->post('title')));
+							$title = trim($this->input->post('title'));
 							$message = $this->input->post('message');
 							$date = time();
 							$info = array(
@@ -110,7 +110,7 @@ class Inbox extends BaseController {
 			} else
 			{
 
-					$title = ucwords(strtolower($this->input->post('title')));
+					$title = trim($this->input->post('title'));
 					$message = $this->input->post('message');
 					$info = array(
 							'title' => $title,
