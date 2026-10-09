@@ -11,6 +11,20 @@ class MY_Loader extends CI_Loader {
       $S3Content = $this->view($template_name, $vars, $return); // view
       $S3Footer = $this->view('templates/footer', $vars, $return); // footer
 
+      // Explicitly clear flashdata once viewed so they never linger across menu clicks
+      if (isset($_SESSION['error'])) {
+          unset($_SESSION['error']);
+      }
+      if (isset($_SESSION['success'])) {
+          unset($_SESSION['success']);
+      }
+      if (isset($_SESSION['__ci_vars']['error'])) {
+          unset($_SESSION['__ci_vars']['error']);
+      }
+      if (isset($_SESSION['__ci_vars']['success'])) {
+          unset($_SESSION['__ci_vars']['success']);
+      }
+
       if ($return)
       {
       /// return $content;

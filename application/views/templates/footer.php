@@ -110,6 +110,17 @@ $(function() {
     cb(start, end);
 
 });
+
+// Auto-dismiss flash alerts after 6 seconds so old messages do not linger
+$(document).ready(function() {
+    if ($('.alert').length > 0) {
+        setTimeout(function() {
+            $('.alert:not(.alert-permanent)').slideUp(400, function() {
+                $(this).remove();
+            });
+        }, 6000);
+    }
+});
 </script>
 <script src="<?php echo asset_url('js/common.js') ?>"></script>
 </body>
