@@ -195,7 +195,8 @@ function saveNewNotification(){
         if (isset($result->success) && $result->success) {
             $this->session->set_flashdata('success', $this->notifications_model->message . ' Notification sent successfully.');
         } else {
-            $this->session->set_flashdata('error', $this->notifications_model->message . ' (Note: Notification delivery failed)');
+            $err = !empty($result->error) ? ' (Notification error: ' . $result->error . ')' : ' (Note: Notification delivery failed)';
+            $this->session->set_flashdata('error', $this->notifications_model->message . $err);
         }
     }
     else {

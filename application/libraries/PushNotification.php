@@ -33,6 +33,8 @@ class PushNotification {
                 require_once FCPATH . 'vendor_newVendor8.3/autoload.php';
             } elseif (file_exists(FCPATH . 'vendor/autoload.php')) {
                 require_once FCPATH . 'vendor/autoload.php';
+            } elseif (file_exists(APPPATH . 'vendor/autoload.php')) {
+                require_once APPPATH . 'vendor/autoload.php';
             }
         }
         
@@ -45,18 +47,27 @@ class PushNotification {
             }
         }
         
+        if (!class_exists('Kreait\Firebase\Factory')) {
+            $this->init_error = 'Firebase SDK autoload failed: vendor/autoload.php not found. Run "composer install" on server.';
+            log_message('error', 'PushNotification: ' . $this->init_error);
+            return;
+        }
+        
         // Initialize Firebase Messaging
         try {
             $credentialsFile = APPPATH . 'config/firebase_credentials.json';
+            if (!file_exists($credentialsFile) && file_exists(FCPATH . 'firebase_credentials.json')) {
+                $credentialsFile = FCPATH . 'firebase_credentials.json';
+            }
             if (file_exists($credentialsFile)) {
                 $firebase = (new Factory)->withServiceAccount($credentialsFile);
                 $this->messaging = $firebase->createMessaging();
             } else {
-                $this->init_error = 'Firebase credentials file not found: ' . $credentialsFile;
+                $this->init_error = 'Firebase credentials file missing at ' . $credentialsFile . '. Please upload firebase_credentials.json to application/config/ on Hostinger.';
                 log_message('error', 'PushNotification: ' . $this->init_error);
             }
         } catch (\Throwable $e) {
-            $this->init_error = $e->getMessage();
+            $this->init_error = 'Firebase Init Error: ' . $e->getMessage();
             log_message('error', 'PushNotification initialization error: ' . $e->getMessage());
         }
     }
